@@ -46,7 +46,15 @@ class OllamaClient(object):
                     self.context = body['context']
                 return ''.join(result)
 
-        
+from traitlets import Int, Unicode
+from traitlets.config.loader import PyFileConfigLoader
+import os
+
+from pprint import pformat
+
+
+
+
 
 class OllamaKernel(Kernel):
 
@@ -61,16 +69,41 @@ class OllamaKernel(Kernel):
     }
     banner = "A kernel for Ollama (a LLM front end)"
 
-    port = 11434
+    port = Int(11434,help="Port the ollama server listens on").tag(config=True)
 
     client = None
-    hostname = 'localhost'
+    hostname = Unicode('localhost',help="Name of the ollama server runs").tag(config=True)
     
-    model = 'llama2'
+    model = Unicode('llama2',help="Name of the model that ollama is to use").tag(config=True)
     base_url = 'http://localhost:11434'
 
     client_changed = True
     
+    config_loaded = False
+    config_file = Unicode('').tag(config=True)
+    default_config_file = 'ollama_kernel_config.py'
+
+
+    def load_config_file(self,filename):
+        loader = PyFileConfigLoader(filename)
+        config = loader.load_config()
+        self.update_config(config)
+
+    def load_config(self):
+        if not len(self.config_file) > 0:
+            self.config_file = self.default_config_file
+        paths = [os.path.join("etc","jupyter"),
+                 os.path.expanduser(os.path.join('~','.jupyter')),
+                 os.getcwd()]
+        filenames = [os.path.join(path,self.config_file) for path in paths]
+        for fn in filenames:
+            self._load_cfg_(fn)
+
+    def _load_cfg_(self,filename):
+        if os.path.exists(filename):
+            self.load_config_file(filename)
+
+
     def out(self,text,stream='stdout'):
             stream_content = {'name': 'stdout', 'text': text}
             self.send_response(self.iopub_socket, 'stream', stream_content)
@@ -107,6 +140,10 @@ class OllamaKernel(Kernel):
             
     def do_execute(self, input, silent, store_history=True, user_expressions=None,
                    allow_stdin=False):
+
+        if not self.config_loaded:
+            self.load_config()
+            self.config_loaded = True
 
         prompt = self.filter_magics(input)
         if not self.client:
