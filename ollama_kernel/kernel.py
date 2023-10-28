@@ -108,6 +108,26 @@ class OllamaKernel(Kernel):
             stream_content = {'name': 'stdout', 'text': text}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
+    def handle_host_magic(self,args):
+        if args:
+            host = args.strip()
+            host = host.split(':')
+            self.hostname = host[0]
+            if(len(host) > 1):
+                self.port = host[1]
+            self.base_url = 'http://' + self.hostname + ':' + str(self.port)
+            self.out('Setting base_url "%s"' % self.base_url)
+        else:
+            self.out(self.hostname)
+
+    def handle_model_magic(self,args):
+        if args:
+            model = args.strip()
+            self.model = model
+            self.out('Setting model "%s"' % self.model)
+        else:
+            self.out(self.model)
+
     def handle_magic(self,magic_line):
         splt = magic_line.split(maxsplit=1)
         magic = splt[0]
@@ -116,23 +136,9 @@ class OllamaKernel(Kernel):
         else:
             args = None
         if magic in ['%%hostname','%%host']:
-            if args:
-                host = args.strip()
-                host = host.split(':')
-                self.hostname = host[0]
-                if(len(host) > 1):
-                    self.port = host[1]
-                self.base_url = 'http://' + self.hostname + ':' + str(self.port)
-                self.out('Setting base_url "%s"' % self.base_url)
-            else:
-                self.out(self.hostname)
+            self.handle_host_magic(args)
         elif magic == '%%model':
-            if args:
-                model = args.strip()
-                self.model = model
-                self.out('Setting model "%s"' % self.model)
-            else:
-                self.out(self.model)
+            self.handle_model_magic(args)
             
     def filter_magics(self,text):
         lines = text.split('\n')
