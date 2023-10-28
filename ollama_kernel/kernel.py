@@ -108,74 +108,88 @@ class OllamaKernel(Kernel):
             stream_content = {'name': 'stdout', 'text': text}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
-    def handle_magic(self,magic):
-        if magic.startswith('%%host:'):
-            host = magic.removeprefix('%%host:').strip()
-            host = host.split(':')
-            self.hostname = host[0]
-            if(len(host) > 1):
-                self.port = host[1]
-            self.base_url = 'http://' + self.hostname + ':' + str(self.port)
-            self.out('Setting base_url "%s"' % self.base_url)
-        elif magic.startswith('%%model:'):
-            self.model = magic.removeprefix('%%model:').strip()
-            self.out('Setting model "%s"' % self.model)
+    def handle_magic(self,magic_line):
+        splt = magic_line.split(maxsplit=1)
+        magic = splt[0]
+        if len(splt) > 1:
+            args = splt[1]
+        else:
+            args = None
+        if magic in ['%%hostname','%%host']:
+            if args:
+                host = args.strip()
+                host = host.split(':')
+                self.hostname = host[0]
+                if(len(host) > 1):
+                    self.port = host[1]
+                self.base_url = 'http://' + self.hostname + ':' + str(self.port)
+                self.out('Setting base_url "%s"' % self.base_url)
+            else:
+                self.out(self.hostname)
+        elif magic == '%%model':
+            if args:
+                model = args.strip()
+                self.model = model
+                self.out('Setting model "%s"' % self.model)
+            else:
+                self.out(self.model)
             
-    def filter_magics(self,input):
-        lines = input.split('\n')
-        magics = []
+    def filter_magics(self,text):
+        lines = text.split('\n')
+        magic_lines = []
         prompt = []
         for l in lines:
             if l.startswith('%%'):
-                magics.append(l)
+                magic_lines.append(l)
             else:
                 prompt.append(l)
-        if len(magics) > 0:
-            for m in magics:
+        if len(magic_lines) > 0:
+            for m in magic_lines:
                 self.handle_magic(m)
-            self.ollama_changed = True
+            self.client_changed = True
                 
         prompt = '\n'.join(prompt)
         return(prompt)
             
-    def do_execute(self, input, silent, store_history=True, user_expressions=None,
+    def do_execute(self, text, silent, store_history=True, user_expressions=None,
                    allow_stdin=False):
 
         if not self.config_loaded:
             self.load_config()
             self.config_loaded = True
+            self.base_url = 'http://' + self.hostname + ':' + str(self.port)
 
-        prompt = self.filter_magics(input)
+        prompt = self.filter_magics(text)
         if not self.client:
             self.client = OllamaClient(base_url=self.base_url,
                                        model=self.model)
         if self.client_changed:
             self.client.base_url = self.base_url
             self.client.model = self.model
-        
+
         self.client_changed = False
-        # errored = False
-        # try:
-
-        output = self.client.generate(prompt)
-        paragraphs = output.split('\n')
-        paragraphs = [textwrap.fill(para) for para in paragraphs]
-        paragraphs[0] = paragraphs[0].lstrip(' ')
-        result = '\n\n'.join(paragraphs)
-        result = result.replace('\n\n\n','\n')
-
-        # except:
-        #     result = "Something went wrong. Have you set host adress and model correctly?"
-        #     errored = True
         errored = False
-        
-        if errored:
-            stream = 'stderr'
-        else:
-            stream = 'stdout'
-            
-        if not silent:
-            self.out(result,stream)
+
+        if len(prompt) > 0:
+            try:
+                output = self.client.generate(prompt)
+                paragraphs = output.split('\n')
+                paragraphs = [textwrap.fill(para) for para in paragraphs]
+                paragraphs[0] = paragraphs[0].lstrip(' ')
+                result = '\n\n'.join(paragraphs)
+                result = result.replace('\n\n\n','\n')
+            except Exception as e:
+                self.out(pformat(e) + '\n')
+                result = "Something went wrong. Have you set host adress and model correctly?"
+                errored = True
+
+            if errored:
+                stream = 'stderr'
+            else:
+                stream = 'stdout'
+
+            if not silent:
+                self.out(result,stream)
 
         return {'status': 'ok',
                 # The base class increments the execution count
