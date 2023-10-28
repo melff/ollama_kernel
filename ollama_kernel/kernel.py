@@ -35,11 +35,16 @@ class OllamaClient(object):
 
         result = []
         
+        first = True
+
         for line in r.iter_lines():
             body = json.loads(line)
             if 'error' in body:
                 raise Exception(body['error'])
             response_part = body.get('response', '')
+            if first:
+                response_part = response_part.lstrip()
+                first = False
             if body.get('done', False):
                 if 'context' in body:
                     self.context = body['context']
@@ -50,10 +55,6 @@ from traitlets.config.loader import PyFileConfigLoader
 import os
 
 from pprint import pformat
-
-
-
-
 
 class OllamaKernel(Kernel):
 
@@ -178,26 +179,13 @@ class OllamaKernel(Kernel):
         if len(prompt) > 0:
             try:
                 results = self.client.generate(prompt)
-                output = ''
+                self.clear_output()
                 for r in results:
-                    output += r
-                paragraphs = output.split('\n')
-                paragraphs = [textwrap.fill(para) for para in paragraphs]
-                paragraphs[0] = paragraphs[0].lstrip(' ')
-                result = '\n\n'.join(paragraphs)
-                result = result.replace('\n\n\n','\n')
+                    self.wrapped_out(r)
+
             except Exception as e:
-                self.out(pformat(e) + '\n')
-                result = "Something went wrong. Have you set host adress and model correctly?"
-                errored = True
-
-            if errored:
-                stream = 'stderr'
-            else:
-                stream = 'stdout'
-
-            if not silent:
-                self.out(result,stream)
+                self.out(pformat(e) + '\n','stderr')
+                self.out("Something went wrong. Have you set host adress and model correctly?",'stderr')
 
         return {'status': 'ok',
                 # The base class increments the execution count
@@ -206,3 +194,27 @@ class OllamaKernel(Kernel):
                 'user_expressions': {},
                }
 
+    def clear_output(self):
+        self.current_line = ''
+
+    current_line = ''
+
+    width = Int(70,help="Line width of output").tag(config=True)
+
+    def wrapped_out(self,fragment):
+        if fragment == '\n':
+            if len(self.current_line) > 0:
+                self.out('\r' + self.current_line + '\n\n')
+            self.current_line = ''
+        else: 
+            self.current_line += fragment
+            wrapped = textwrap.wrap(self.current_line)
+            wrapped[0] = '\r' + wrapped[0]
+            n = len(wrapped)
+            for i in range(n):
+                if i < n-1:
+                    self.out(wrapped[i] + '\n')
+                else:
+                    self.out(wrapped[i])
+            if n > 1:
+                self.current_line = wrapped[n-1]
