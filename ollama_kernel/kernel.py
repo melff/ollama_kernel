@@ -40,11 +40,10 @@ class OllamaClient(object):
             if 'error' in body:
                 raise Exception(body['error'])
             response_part = body.get('response', '')
-            result.append(response_part)
             if body.get('done', False):
                 if 'context' in body:
                     self.context = body['context']
-                return ''.join(result)
+            yield response_part
 
 from traitlets import Int, Unicode
 from traitlets.config.loader import PyFileConfigLoader
@@ -178,7 +177,10 @@ class OllamaKernel(Kernel):
 
         if len(prompt) > 0:
             try:
-                output = self.client.generate(prompt)
+                results = self.client.generate(prompt)
+                output = ''
+                for r in results:
+                    output += r
                 paragraphs = output.split('\n')
                 paragraphs = [textwrap.fill(para) for para in paragraphs]
                 paragraphs[0] = paragraphs[0].lstrip(' ')
