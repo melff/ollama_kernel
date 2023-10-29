@@ -21,9 +21,7 @@ class OllamaClient(object):
         self.model = model
 
     def generate(self,prompt):
-
         url = self.base_url + '/api/generate'
-        
         r = requests.post(url,
                           json={
                               'model': self.model,
@@ -32,11 +30,7 @@ class OllamaClient(object):
                           },
                           stream=True)
         r.raise_for_status()
-
-        result = []
-        
         first = True
-
         for line in r.iter_lines():
             body = json.loads(line)
             if 'error' in body:
@@ -50,11 +44,53 @@ class OllamaClient(object):
                     self.context = body['context']
             yield response_part
 
+    def tags(self):
+        url = self.base_url + '/api/tags'
+        r = requests.get(url,stream=True)
+        r.raise_for_status()
+        for line in r.iter_lines():
+            body = json.loads(line)
+            if 'error' in body:
+                raise Exception(body['error'])
+            models = body.get('models','')
+            for model in models:
+                yield model
+        
+    def mod_info(self,model):
+        url = self.base_url + '/api/show'
+        r = requests.post(url,
+                          json={
+                              'name' : model
+                          },
+                          stream=True)
+        r.raise_for_status()
+        for line in r.iter_lines():
+            body = json.loads(line)
+            if 'error' in body:
+                raise Exception(body['error'])
+            yield body
+
+    def pull(self,model):
+        url = self.base_url + '/api/pull'
+        r = requests.post(url,
+                         json={
+                             'name': model
+                         },
+                         stream=True)
+        r.raise_for_status()
+        for line in r.iter_lines():
+            body = json.loads(line)
+            if 'error' in body:
+                raise Exception(body['error'])
+            yield body
+
 from traitlets import Int, Unicode
 from traitlets.config.loader import PyFileConfigLoader
 import os
 
 from pprint import pformat
+
+from datetime import datetime, date, time, timezone
 
 class OllamaKernel(Kernel):
 
@@ -83,6 +119,7 @@ class OllamaKernel(Kernel):
     config_file = Unicode('').tag(config=True)
     default_config_file = 'ollama_kernel_config.py'
 
+    width = Int(80,help="Line width of output").tag(config=True)
 
     def load_config_file(self,filename):
         loader = PyFileConfigLoader(filename)
@@ -128,6 +165,62 @@ class OllamaKernel(Kernel):
         else:
             self.out(self.model)
 
+    def handle_width_magic(self,args):
+        if args:
+            width = args.strip()
+            try:
+                self.width = int(width)
+                self.out('Set width to "%d"' % self.width)
+            except:
+                self.out('Error: Width must be integer','stderr')
+        else:
+            self.out(self.width)
+
+    def handle_tags_magic(self,args):
+        models = self.client.tags()
+        for model in models:
+            if 'name' in model:
+                self.out('Model: %s' % model['name'])
+            if 'size' in model:
+                size = int(model['size'])
+                self.out('\n   Size: %s' % '{:,}'.format(size))
+            if 'modified_at' in model:
+                mod_date = datetime.fromisoformat(model['modified_at'])
+                self.out('\n   Modified: %s' % mod_date.strftime('%a, %d %b %Y - %H:%M:%S %Z'))
+
+    def handle_info_magic(self,args):
+        if args:
+            model = args.strip()
+            try:
+                mod_infos = self.client.mod_info(model)
+                for mi in mod_infos:
+                    for n in ['modelfile','licence','parameters','template']:
+                        N = n.capitalize()
+                        if n in mi:
+                            self.out(N + ':\n')
+                            self.out(mi[n] + '\n')
+            except Exception as e:
+                self.out(pformat(e) + '\n','stderr')
+
+    def handle_pull_magic(self,args):
+        if args:
+            model = args.strip()
+            try:
+                res = self.client.pull(model)
+                self.out('Pulling model "%s"\n' % model)
+                for status in res:
+                    if 'total' in status and 'completed' in status:
+                        total = status['total']
+                        completed = status['completed']
+                        prop_done = completed/total
+                        self.out('\rPercent complted:' + ('%3.2F' % prop_done) + ' %')
+                self.out('\n')
+
+            except Exception as e:
+                self.out(pformat(e) + '\n','stderr')
+
+
+
     def handle_magic(self,magic_line):
         splt = magic_line.split(maxsplit=1)
         magic = splt[0]
@@ -139,6 +232,14 @@ class OllamaKernel(Kernel):
             self.handle_host_magic(args)
         elif magic == '%%model':
             self.handle_model_magic(args)
+        elif magic == '%%width':
+            self.handle_width_magic(args)
+        elif magic == '%%tags':
+            self.handle_tags_magic(args)
+        elif magic == '%%info':
+            self.handle_info_magic(args)
+        elif magic == '%%pull':
+            self.handle_pull_magic(args)
             
     def filter_magics(self,text):
         lines = text.split('\n')
@@ -165,10 +266,11 @@ class OllamaKernel(Kernel):
             self.config_loaded = True
             self.base_url = 'http://' + self.hostname + ':' + str(self.port)
 
-        prompt = self.filter_magics(text)
         if not self.client:
             self.client = OllamaClient(base_url=self.base_url,
                                        model=self.model)
+
+        prompt = self.filter_magics(text)
         if self.client_changed:
             self.client.base_url = self.base_url
             self.client.model = self.model
@@ -199,8 +301,6 @@ class OllamaKernel(Kernel):
 
     current_line = ''
 
-    width = Int(70,help="Line width of output").tag(config=True)
-
     def wrapped_out(self,fragment):
         if fragment == '\n':
             if len(self.current_line) > 0:
@@ -208,13 +308,13 @@ class OllamaKernel(Kernel):
             self.current_line = ''
         else: 
             self.current_line += fragment
-            wrapped = textwrap.wrap(self.current_line)
+            wrapped = textwrap.wrap(self.current_line,width=self.width)
             wrapped[0] = '\r' + wrapped[0]
             n = len(wrapped)
             for i in range(n):
                 if i < n-1:
                     self.out(wrapped[i] + '\n')
                 else:
-                    self.out(wrapped[i])
+                    self.out(wrapped[i].ljust(self.width))
             if n > 1:
                 self.current_line = wrapped[n-1]
