@@ -189,21 +189,21 @@ class OllamaKernel(Kernel):
         models = self.client.tags()
         for model in models:
             if 'name' in model:
-                self.out('Model: %s' % model['name'])
+                self.out('Model: %s\n' % model['name'])
             if 'size' in model:
                 size = int(model['size'])
-                self.out('\n   Size: %s' % '{:,}'.format(size))
+                self.out('Size: %s\n' % '{:,}'.format(size))
             if 'modified_at' in model:
                 mod_date = datetime.fromisoformat(model['modified_at'])
-                self.out('\n   Modified: %s' % mod_date.strftime('%a, %d %b %Y - %H:%M:%S %Z'))
+                self.out('Modified: %s\n\n' % mod_date.strftime('%a, %d %b %Y - %H:%M:%S %Z'))
 
-    def handle_info_magic(self,args):
+    def handle_show_magic(self,args):
         if args:
             model = args.strip()
             try:
                 mod_infos = self.client.mod_info(model)
                 for mi in mod_infos:
-                    for n in ['modelfile','licence','parameters','template']:
+                    for n in ['modelfile','license']:
                         N = n.capitalize()
                         if n in mi:
                             self.out(N + ':\n')
@@ -269,10 +269,10 @@ class OllamaKernel(Kernel):
             self.handle_model_magic(args)
         elif magic == '%%width':
             self.handle_width_magic(args)
-        elif magic == '%%tags':
+        elif magic in ['%%tags','%%models']:
             self.handle_tags_magic(args)
-        elif magic == '%%info':
-            self.handle_info_magic(args)
+        elif magic in ['%%show','%%info']:
+            self.handle_show_magic(args)
         elif magic == '%%pull':
             self.handle_pull_magic(args)
         elif magic in ['%%delete','%%remove','%%erase']:
