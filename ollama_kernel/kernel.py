@@ -84,6 +84,15 @@ class OllamaClient(object):
                 raise Exception(body['error'])
             yield body
 
+    def delete(self,model):
+        url = self.base_url + '/api/delete'
+        r = requests.delete(url,
+                         json={
+                             'name': model
+                         },
+                         stream=True)
+        r.raise_for_status()    
+
 from traitlets import Int, Unicode
 from traitlets.config.loader import PyFileConfigLoader
 import os
@@ -219,6 +228,14 @@ class OllamaKernel(Kernel):
             except Exception as e:
                 self.out(pformat(e) + '\n','stderr')
 
+    def handle_delete_magic(self,args):
+        if args:
+            model = args.strip()
+            self.out('Deleting model "%s"\n' % model)
+            try:
+                res = self.client.delete(model)
+            except Exception as e:
+                self.out(pformat(e) + '\n','stderr')
 
 
     def handle_magic(self,magic_line):
@@ -240,6 +257,8 @@ class OllamaKernel(Kernel):
             self.handle_info_magic(args)
         elif magic == '%%pull':
             self.handle_pull_magic(args)
+        elif magic in ['%%delete','%%remove','%%erase']:
+            self.handle_delete_magic(args)
             
     def filter_magics(self,text):
         lines = text.split('\n')
