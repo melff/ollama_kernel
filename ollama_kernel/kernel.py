@@ -154,6 +154,49 @@ class OllamaKernel(Kernel):
             stream_content = {'name': stream, 'text': text}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
+    current_display_id = dict(plain=0,markdown=1)
+                
+    def display(self,display_id,data,metadata=dict(),update=False):
+        msg_type = 'update_display_data'
+        if not update:
+            msg_type = 'display_data'
+            
+        display_content = dict(
+            data = data,
+            metadata = metadata,
+            transient = dict(display_id=display_id)
+        )
+        self.send_response(self.iopub_socket, msg_type, display_content)
+
+    current_md = ''
+        
+    def display_md(self,text,add=False):
+        if add:
+            self.current_md += text
+        else:
+            self.current_md = text
+            self.current_display_id['markdown'] += 2
+        data = {
+            "text/markdown": self.current_md
+        }
+        display_id = self.current_display_id['markdown']
+        self.display(display_id,data,update=add)
+
+    current_plaintext = ''
+        
+    def display_text(self,text,add=False):
+        if add:
+            self.current_plaintext += text
+        else:
+            self.current_plaintext = text
+            self.current_display_id['plain'] += 2
+        data = {
+            "text/plain": self.current_plaintext
+        }
+        display_id = self.current_display_id['plain']
+        self.display(display_id,data,update=add)
+        
+        
     def handle_host_magic(self,args):
         if args:
             host = args.strip()
@@ -185,6 +228,29 @@ class OllamaKernel(Kernel):
         else:
             self.stream(self.width)
 
+    def handle_markdown_magic(self,args):
+        if args:
+            use_markdown = args.strip()
+            try:
+                if use_markdown.lower() in 'false':
+                    use_markdown = False
+                elif use_markdown.lower() in 'true':
+                    use_markdown = True
+                if self.use_markdown != use_markdown:
+                    self.use_markdown = use_markdown
+                    if self.use_markdown:
+                        self.stream('Markdown output activated')
+                    else:
+                        self.stream('Markdown output deactivated')
+            except:
+                self.stream('Error: Agument must be boolean','stderr')
+        else:
+            if self.use_markdown:
+                self.stream('Markdown output is active')
+            else:
+                self.stream('Markdown output is inactive')
+
+            
     def handle_tags_magic(self,args):
         models = self.client.tags()
         for model in models:
@@ -269,6 +335,8 @@ class OllamaKernel(Kernel):
             self.handle_model_magic(args)
         elif magic == '%%width':
             self.handle_width_magic(args)
+        elif magic in ['%%markdown','%%md']:
+            self.handle_markdown_magic(args)
         elif magic in ['%%tags','%%models']:
             self.handle_tags_magic(args)
         elif magic in ['%%show','%%info']:
@@ -294,7 +362,9 @@ class OllamaKernel(Kernel):
                 
         prompt = '\n'.join(prompt)
         return(prompt)
-            
+
+    use_markdown = Bool(True).tag(config=True)
+    
     def do_execute(self, text, silent, store_history=True, user_expressions=None,
                    allow_stdin=False):
 
@@ -318,9 +388,16 @@ class OllamaKernel(Kernel):
         if len(prompt) > 0:
             try:
                 results = self.client.generate(prompt)
-                self.clear_output()
-                for r in results:
-                    self.wrapped_out(r)
+                if self.use_markdown:
+                    self.display_md('')
+                    # self.display_text('')
+                    for r in results:
+                        self.display_md(r,add=True)
+                        # self.display_text(r,add=True)
+                else:
+                    self.clear_output()
+                    for r in results:
+                        self.wrapped_out(r)
 
             except Exception as e:
                 self.stream(pformat(e) + '\n','stderr')
