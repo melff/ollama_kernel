@@ -303,18 +303,19 @@ class OllamaKernel(Kernel):
 
     def wrapped_out(self,fragment):
         if fragment == '\n':
-            if len(self.current_line) > 0:
-                self.out('\r' + self.current_line + '\n\n')
+            # if len(self.current_line) > 0:
+            self.out('\r' + self.current_line + '\n')
             self.current_line = ''
         else: 
             self.current_line += fragment
             wrapped = textwrap.wrap(self.current_line,width=self.width)
-            wrapped[0] = '\r' + wrapped[0]
             n = len(wrapped)
-            for i in range(n):
-                if i < n-1:
-                    self.out(wrapped[i] + '\n')
-                else:
-                    self.out(wrapped[i].ljust(self.width))
+            if n > 0:
+                wrapped[0] = '\r' + wrapped[0]
+                for i in range(n):
+                    if i < n-1:
+                        self.out(wrapped[i] + '\n')
+                    else:
+                        self.out(wrapped[i].ljust(self.width))
             if n > 1:
                 self.current_line = wrapped[n-1]
