@@ -93,7 +93,7 @@ class OllamaClient(object):
                          stream=True)
         r.raise_for_status()    
 
-from traitlets import Int, Unicode
+from traitlets import Int, Unicode, Bool
 from traitlets.config.loader import PyFileConfigLoader
 import os
 
@@ -150,7 +150,7 @@ class OllamaKernel(Kernel):
             self.load_config_file(filename)
 
 
-    def out(self,text,stream='stdout'):
+    def stream(self,text,stream='stdout'):
             stream_content = {'name': stream, 'text': text}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
@@ -162,40 +162,40 @@ class OllamaKernel(Kernel):
             if(len(host) > 1):
                 self.port = host[1]
             self.base_url = 'http://' + self.hostname + ':' + str(self.port)
-            self.out('Setting base_url "%s"' % self.base_url)
+            self.stream('Setting base_url "%s"' % self.base_url)
         else:
-            self.out(self.hostname)
+            self.stream(self.hostname)
 
     def handle_model_magic(self,args):
         if args:
             model = args.strip()
             self.model = model
-            self.out('Setting model "%s"' % self.model)
+            self.stream('Setting model "%s"' % self.model)
         else:
-            self.out(self.model)
+            self.stream(self.model)
 
     def handle_width_magic(self,args):
         if args:
             width = args.strip()
             try:
                 self.width = int(width)
-                self.out('Set width to "%d"' % self.width)
+                self.stream('Set width to "%d"' % self.width)
             except:
-                self.out('Error: Width must be integer','stderr')
+                self.stream('Error: Width must be integer','stderr')
         else:
-            self.out(self.width)
+            self.stream(self.width)
 
     def handle_tags_magic(self,args):
         models = self.client.tags()
         for model in models:
             if 'name' in model:
-                self.out('Model: %s\n' % model['name'])
+                self.stream('Model: %s\n' % model['name'])
             if 'size' in model:
                 size = int(model['size'])
-                self.out('Size: %s\n' % '{:,}'.format(size))
+                self.stream('Size: %s\n' % '{:,}'.format(size))
             if 'modified_at' in model:
                 mod_date = datetime.fromisoformat(model['modified_at'])
-                self.out('Modified: %s\n\n' % mod_date.strftime('%a, %d %b %Y - %H:%M:%S %Z'))
+                self.stream('Modified: %s\n\n' % mod_date.strftime('%a, %d %b %Y - %H:%M:%S %Z'))
 
     def handle_show_magic(self,args):
         if args:
@@ -206,16 +206,16 @@ class OllamaKernel(Kernel):
                     for n in ['modelfile','license']:
                         N = n.capitalize()
                         if n in mi:
-                            self.out(N + ':\n')
-                            self.out(mi[n] + '\n')
+                            self.stream(N + ':\n')
+                            self.stream(mi[n] + '\n')
             except Exception as e:
-                self.out(pformat(e) + '\n','stderr')
+                self.stream(pformat(e) + '\n','stderr')
 
     def handle_pull_magic(self,args):
         if args:
             model = args.strip()
             try:
-                self.out('Pulling model "%s"\n' % model)
+                self.stream('Pulling model "%s"\n' % model)
                 res = self.client.pull(model)
                 b_0 = 0
                 t_0 = 0
@@ -235,25 +235,25 @@ class OllamaKernel(Kernel):
                             if p < 0 or p > 1:
                                 p = 1
                             delta_t = t - t_0
-                            self.out('\rPercent completed: ' + ('%3.1F' % perc_compl) + '%')
+                            self.stream('\rPercent completed: ' + ('%3.1F' % perc_compl) + '%')
                             if p > 0:
                                 t_remaining = delta_t * (1-p)/p
                                 # Round to seconds
                                 seconds_remaining = round(t_remaining.total_seconds())
                                 t_remaining = timedelta(seconds=seconds_remaining)
-                                self.out(' -- Est. time remaining: ' + str(t_remaining))
-                self.out('\n')
+                                self.stream(' -- Est. time remaining: ' + str(t_remaining))
+                self.stream('\n')
             except Exception as e:
-                self.out(pformat(e) + '\n','stderr')
+                self.stream(pformat(e) + '\n','stderr')
 
     def handle_delete_magic(self,args):
         if args:
             model = args.strip()
-            self.out('Deleting model "%s"\n' % model)
+            self.stream('Deleting model "%s"\n' % model)
             try:
                 res = self.client.delete(model)
             except Exception as e:
-                self.out(pformat(e) + '\n','stderr')
+                self.stream(pformat(e) + '\n','stderr')
 
 
     def handle_magic(self,magic_line):
@@ -323,8 +323,8 @@ class OllamaKernel(Kernel):
                     self.wrapped_out(r)
 
             except Exception as e:
-                self.out(pformat(e) + '\n','stderr')
-                self.out("Something went wrong. Have you set host adress and model correctly?",'stderr')
+                self.stream(pformat(e) + '\n','stderr')
+                self.stream("Something went wrong. Have you set host adress and model correctly?",'stderr')
 
         return {'status': 'ok',
                 # The base class increments the execution count
@@ -341,7 +341,7 @@ class OllamaKernel(Kernel):
     def wrapped_out(self,fragment):
         if fragment == '\n':
             # if len(self.current_line) > 0:
-            self.out('\r' + self.current_line + '\n')
+            self.stream('\r' + self.current_line + '\n')
             self.current_line = ''
         else: 
             self.current_line += fragment
@@ -351,8 +351,9 @@ class OllamaKernel(Kernel):
                 wrapped[0] = '\r' + wrapped[0]
                 for i in range(n):
                     if i < n-1:
-                        self.out(wrapped[i] + '\n')
+                        self.stream(wrapped[i] + '\n')
                     else:
-                        self.out(wrapped[i].ljust(self.width))
+                        self.stream(wrapped[i].ljust(self.width))
             if n > 1:
                 self.current_line = wrapped[n-1]
+
