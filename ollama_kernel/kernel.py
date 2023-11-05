@@ -99,7 +99,7 @@ import os
 
 from pprint import pformat
 
-from datetime import datetime, date, time, timezone
+from datetime import datetime, date, time, timezone, timedelta
 
 class OllamaKernel(Kernel):
 
@@ -215,16 +215,34 @@ class OllamaKernel(Kernel):
         if args:
             model = args.strip()
             try:
-                res = self.client.pull(model)
                 self.out('Pulling model "%s"\n' % model)
+                res = self.client.pull(model)
+                b_0 = 0
+                t_0 = 0
+                perc_compl = 0
                 for status in res:
                     if 'total' in status and 'completed' in status:
                         total = status['total']
-                        completed = status['completed']
-                        prop_done = completed/total
-                        self.out('\rPercent complted:' + ('%3.2F' % prop_done) + ' %')
+                        b = status['completed']
+                        t = datetime.now()
+                        if t_0 == 0:
+                            b_0 = b
+                            t_0 = t
+                        p = (b-b_0)/total
+                        last_perc_compl = perc_compl
+                        perc_compl = 100*(b/total)
+                        if perc_compl - last_perc_compl >= 0.1:
+                            if p < 0 or p > 1:
+                                p = 1
+                            delta_t = t - t_0
+                            self.out('\rPercent completed: ' + ('%3.1F' % perc_compl) + '%')
+                            if p > 0:
+                                t_remaining = delta_t * (1-p)/p
+                                # Round to seconds
+                                seconds_remaining = round(t_remaining.total_seconds())
+                                t_remaining = timedelta(seconds=seconds_remaining)
+                                self.out(' -- Est. time remaining: ' + str(t_remaining))
                 self.out('\n')
-
             except Exception as e:
                 self.out(pformat(e) + '\n','stderr')
 
