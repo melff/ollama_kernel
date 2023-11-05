@@ -151,7 +151,7 @@ class OllamaKernel(Kernel):
 
 
     def out(self,text,stream='stdout'):
-            stream_content = {'name': 'stdout', 'text': text}
+            stream_content = {'name': stream, 'text': text}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
     def handle_host_magic(self,args):
